@@ -16,5 +16,8 @@ kubebuilder init --domain tutorial.kubebuilder.io --repo tutorial.kubebuilder.io
 
 It's important to structure your --repo argument to reflect your actual or intended repository URL or path, especially if you plan to push your project to a version control system. This consistency helps in avoiding issues with Go modules and package imports, especially when other developers are working with your code or when deploying your project across different environments
 
+## Create API GVK
 
-
+```sh
+kubebuilder create api --group batch --version v1 --kind CronJob
+```
