@@ -12,7 +12,7 @@ The job (no pun intended) of the ***CronJob* controller** is to run one-off task
 
 ## go.mod
 
-Obvious, all dependencies that kubebuilder uses.
+Obvious standard go file. All dependencies that kubebuilder uses.
 
 ## Makefile
 
@@ -138,7 +138,7 @@ func init() {
 }
 ```
 
-> golang: init() is called at the beginning of any package (even before main). When you import a package its init func is called.
+> golang::init() is called at the beginning of any package (even before main). When you import a package its init func is called.
 >
 > **client-go** - Go clients for talking to a [kubernetes](http://kubernetes.io/) cluster. https://github.com/kubernetes/client-go. K8s API client is a program that talks with cluster's kube-api-server
 
@@ -199,3 +199,85 @@ We run our manager, which in turn runs all of our controllers and webhooks. The 
 > **Webhook** - A webhook is an HTTP request, triggered by an event in a source system and sent to a destination system, often with a payload of data.
 > ![](img/1.png)
 
+# Creating the API
+https://book.kubebuilder.io/cronjob-tutorial/new-api
+
+
+First, get familiar with [api-gvk-101](api-gvk.101.md). What does it mean to add an API?
+
+We use API Objects to tell our K8s Cluster what do we want to obtain. The API Objects reflect the business logic.
+How we can CRUD these API Objects? Via REST API accessible to us via kube-api-server. Every API object has a set of 4 endpoints that allow you to Create, Read, Update, Delte it. When you register your own kind/type of API object you need to also define this API.
+You need to create API that will allow to CRUD your kind of API Object - Your custom resource.
+
+The command:
+```sh
+kubebuilder create api --group batch --version v1 --kind CronJob
+```
+Run it. Answer yes two times.
+
+Lets discuss the changes that occured. New files, files modifications etc.
+![](img/2.png)
+
+## `api/v1`
+Our new kind Cronjob specifies several go types. All of these type are placed in [cronjob_types.go](../api/v1/cronjob_types.go)
+
+[groupversion_info.go](../api/v1/groupversion_info.go) - here is some info about our gvk to we can properly build Schema object and register it.
+
+[zz_generated.deepcopy.go](../api/v1/zz_generated.deepcopy.go) you know what deep copy in go is?
+
+###  [cronjob_types.go](../api/v1/cronjob_types.go)
+
+Has few structs, they correspod to the Kind:
+
+- `spec` - spec of the Kind instance in k8s is its desired state, it is the info in yaml definition file, it *spec*ifies what we want the resource to be. 
+- `status` - is the current state of Kind instance (resource). Kubernetes observes the **status** and compares it to **spec**. Then reconciles both. 
+- `root type` - describes the Kind. It has spec and status in itself and some common for all Kinds metadata
+- `list` - container for list of root type objects
+
+root type:
+```go
+//+kubebuilder:object:root=true
+//+kubebuilder:subresource:status
+
+// CronJob is the Schema for the cronjobs API
+type CronJob struct {
+    metav1.TypeMeta   `json:",inline"`				 // Contains strings: Kind and ApiVersion
+    metav1.ObjectMeta `json:"metadata,omitempty"`    // Contains strings: Name, Namespace, Labels, CreationTimestamp, etc.
+
+    Spec   CronJobSpec   `json:"spec,omitempty"`     // specification of CronJob in its desired state
+    Status CronJobStatus `json:"status,omitempty"`   // current status of the CronJob (controller will compare it to Spec and reconcile) 
+}
+```
+
+package `"k8s.io/apimachinery/pkg/apis/meta/v1"` imported as `metav1` contains some metadata common to all k8s kinds.
+
+In this file you the designer of kind will define its spec and status.
+
+### [groupversion_info.go](../api/v1/groupversion_info.go) 
+Here we define variables for `SchemeBuilder` which we use to build the Scheme object. As you can see we declare this var as a reference of struct `Builder` from `scheme` package. 
+
+At the end of [cronjob_types.go](../api/v1/cronjob_types.go)  we use this variable:
+```go
+func init() {
+	SchemeBuilder.Register(&CronJob{}, &CronJobList{})
+}
+```
+
+## `internal/controller`
+### [cronjob_controller.go](cronjob_controller.go)
+The actual mission of k8s controller (of any k8s object) is actually to RECONCILE.
+That's why the main body of controller is called `reconciler` and the main method is `reconcile`.
+The other method is used to register this reconciler with given manager.
+
+## `cmd/main.go`
+Here we have few more lines added:
+```go
+if err = (&controller.CronJobReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "CronJob")
+		os.Exit(1)
+	}
+```
+These lines create an instance of `CronJobReconciler` struct. The stcut is filled with fields for Client and Scheme. Also we have a method to add the rigth manager. See [elements-of-controller-runtime.md](elements-of-controller-runtime.md).
